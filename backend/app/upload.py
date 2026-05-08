@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from .database import get_db
 from .models import User, Document, DocumentStatus
 from .auth import get_current_user
-from .schemas import DocumentResponse, DocumentListResponse, PaginationMeta
+from .schemas import DocumentOut, DocumentListOut, PaginatedDocuments
 from .tasks import process_document
 from .config import get_settings
 from .search import search_documents as search_fn
@@ -30,7 +30,7 @@ ALLOWED_MIME_TYPES = {
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
-@router.post("/upload", response_model=DocumentResponse)
+@router.post("/upload", response_model=DocumentOut)
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -75,10 +75,10 @@ async def upload_document(
     # Trigger async processing
     process_document.delay(str(doc.id))
 
-    return DocumentResponse.from_orm(doc)
+    return DocumentOut.model_validate(doc)
 
 
-@router.get("", response_model=DocumentListResponse)
+@router.get("", response_model=PaginatedDocuments)
 async def list_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -100,13 +100,17 @@ async def list_documents(
     )
     total = (await db.execute(count_query)).scalar()
 
-    return DocumentListResponse(
-        items=[DocumentResponse.from_orm(d) for d in docs],
-        pagination=PaginationMeta(page=page, per_page=per_page, total=total),
+    pages = max(1, (total + per_page - 1) // per_page)
+    return PaginatedDocuments(
+        items=[DocumentListOut.model_validate(d) for d in docs],
+        total=total,
+        page=page,
+        page_size=per_page,
+        pages=pages,
     )
 
 
-@router.get("/search", response_model=DocumentListResponse)
+@router.get("/search", response_model=PaginatedDocuments)
 async def search_documents_endpoint(
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
@@ -115,13 +119,17 @@ async def search_documents_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     docs, total = await search_fn(db, current_user.id, q, page, per_page)
-    return DocumentListResponse(
-        items=[DocumentResponse.from_orm(d) for d in docs],
-        pagination=PaginationMeta(page=page, per_page=per_page, total=total),
+    pages = max(1, (total + per_page - 1) // per_page)
+    return PaginatedDocuments(
+        items=[DocumentListOut.model_validate(d) for d in docs],
+        total=total,
+        page=page,
+        page_size=per_page,
+        pages=pages,
     )
 
 
-@router.get("/{doc_id}", response_model=DocumentResponse)
+@router.get("/{doc_id}", response_model=DocumentOut)
 async def get_document(
     doc_id: str,
     db: AsyncSession = Depends(get_db),
@@ -143,7 +151,7 @@ async def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    return DocumentResponse.from_orm(doc)
+    return DocumentOut.model_validate(doc)
 
 
 @router.get("/{doc_id}/download")

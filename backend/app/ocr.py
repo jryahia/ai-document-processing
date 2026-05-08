@@ -29,6 +29,6 @@ def extract_text_from_image(file_path: str) -> str:
 
 
 def extract_text(file_path: str, file_type: str) -> str:
-    if file_type == "application/pdf":
+    if file_type == "pdf":
         return extract_text_from_pdf(file_path)
     return extract_text_from_image(file_path)

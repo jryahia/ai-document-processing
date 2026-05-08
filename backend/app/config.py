@@ -8,10 +8,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "change-me-in-production-use-long-random-string"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24 * 7
+    access_token_expire_minutes: int = 1440
     openai_api_key: str = ""
     upload_dir: str = "/app/uploads"
     max_file_size_mb: int = 20
+    celery_broker_url: str = "redis://redis:6379/0"
+    celery_result_backend: str = "redis://redis:6379/0"
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""

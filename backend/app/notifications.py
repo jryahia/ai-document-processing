@@ -56,7 +56,9 @@ def send_processing_complete_email(to_address: str, document_name: str, status: 
     </body></html>
     """
     try:
-        asyncio.run(send_email(to_address, f"Document Processed: {document_name}", body))
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(send_email(to_address, f"Document Processed: {document_name}", body))
+        loop.close()
     except Exception:
         pass
 

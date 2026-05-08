@@ -1,4 +1,6 @@
 """PostgreSQL full-text search for documents."""
+from uuid import UUID
+
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +9,7 @@ from .models import Document
 
 async def search_documents(
     db: AsyncSession,
-    user_id: str,
+    user_id: UUID,
     query: str,
     page: int = 1,
     per_page: int = 20,
