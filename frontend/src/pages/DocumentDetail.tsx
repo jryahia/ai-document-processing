@@ -5,6 +5,17 @@ import toast from 'react-hot-toast'
 
 type Tab = 'ocr' | 'summary' | 'data'
 
+/**
+ * The download endpoint serves every file as application/octet-stream, so the blob
+ * needs an explicit MIME type before the browser will render it inline.
+ */
+const PREVIEW_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+}
+
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>()
   const [doc, setDoc] = useState<Document | null>(null)
@@ -12,9 +23,23 @@ export default function DocumentDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('summary')
   const [downloading, setDownloading] = useState(false)
   const [reportLoading, setReportLoading] = useState(false)
+  const [compare, setCompare] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  // The object URL stays alive while the preview is mounted; release it on replace/unmount.
+  useEffect(() => {
+    if (!previewUrl) return
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
 
   useEffect(() => {
     if (!id) return
+    // Drop any preview belonging to the document viewed before this one.
+    setCompare(false)
+    setPreviewUrl(null)
+    setPreviewError(null)
     const fetchDoc = async () => {
       try {
         const res = await documentsApi.get(id)
@@ -61,6 +86,28 @@ export default function DocumentDetail() {
       toast.error('Report generation failed')
     } finally {
       setReportLoading(false)
+    }
+  }
+
+  const handleTogglePreview = async () => {
+    if (!doc || !isProcessed(doc.status)) return
+    if (compare) {
+      setCompare(false)
+      return
+    }
+    setCompare(true)
+    // Fetch lazily on first open; the object URL is cached for later toggles.
+    if (previewUrl || previewLoading) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const res = await documentsApi.download(doc.id)
+      const type = PREVIEW_MIME[doc.file_type.toLowerCase()] ?? 'application/octet-stream'
+      setPreviewUrl(URL.createObjectURL(new Blob([res.data], { type })))
+    } catch {
+      setPreviewError('Could not load the original document')
+    } finally {
+      setPreviewLoading(false)
     }
   }
 
@@ -193,13 +240,51 @@ export default function DocumentDetail() {
             >
               {reportLoading ? 'Generating...' : 'Download Report (PDF)'}
             </button>
+            <button
+              onClick={handleTogglePreview}
+              disabled={previewLoading}
+              className="btn-secondary text-sm"
+            >
+              {previewLoading ? 'Loading...' : compare ? 'Hide Original' : 'Side-by-side view'}
+            </button>
           </div>
         )}
       </div>
 
-      {/* Tabs */}
+      {/* Original preview + extracted tabs (side-by-side when enabled) */}
       {processed && (
-        <div className="card">
+        <div className={compare ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-start' : ''}>
+          {compare && (
+            <div className="card">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
+                Original: {doc.original_name}
+              </p>
+              {previewLoading && (
+                <div className="flex items-center justify-center h-[600px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-accent-500" />
+                </div>
+              )}
+              {previewError && (
+                <p className="text-red-400 text-sm text-center py-10">{previewError}</p>
+              )}
+              {previewUrl &&
+                (doc.file_type.toLowerCase() === 'pdf' ? (
+                  <iframe
+                    title={`Original: ${doc.original_name}`}
+                    src={previewUrl}
+                    className="w-full h-[600px] bg-dark-800 rounded-lg border border-dark-700"
+                  />
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt={`Original: ${doc.original_name}`}
+                    className="w-full max-h-[600px] object-contain rounded-lg border border-dark-700"
+                  />
+                ))}
+            </div>
+          )}
+
+          <div className="card">
           <div className="flex gap-1 border-b border-dark-700 mb-4">
             {tabs.map((tab) => (
               <button
@@ -272,6 +357,7 @@ export default function DocumentDetail() {
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 
