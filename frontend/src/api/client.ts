@@ -57,9 +57,30 @@ export interface PaginationMeta {
   total: number
 }
 
+/** Raw shape the FastAPI backend returns for paginated document lists. */
+interface BackendListResponse {
+  items: Document[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
 export interface DocumentListResponse {
   items: Document[]
   pagination: PaginationMeta
+}
+
+/** Map backend top-level {items,total,page,page_size,pages} -> {items,pagination}. */
+function toListResponse(data: BackendListResponse): DocumentListResponse {
+  return {
+    items: data.items,
+    pagination: {
+      page: data.page,
+      per_page: data.page_size,
+      total: data.total,
+    },
+  }
 }
 
 export const documentsApi = {
@@ -70,10 +91,18 @@ export const documentsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
-  list: (page = 1, perPage = 20) =>
-    api.get<DocumentListResponse>('/documents', { params: { page, per_page: perPage } }),
-  search: (q: string, page = 1, perPage = 20) =>
-    api.get<DocumentListResponse>('/documents/search', { params: { q, page, per_page: perPage } }),
+  list: async (page = 1, perPage = 20) => {
+    const res = await api.get<BackendListResponse>('/documents', {
+      params: { page, per_page: perPage },
+    })
+    return { ...res, data: toListResponse(res.data) }
+  },
+  search: async (q: string, page = 1, perPage = 20) => {
+    const res = await api.get<BackendListResponse>('/documents/search', {
+      params: { q, page, per_page: perPage },
+    })
+    return { ...res, data: toListResponse(res.data) }
+  },
   get: (id: string) => api.get<Document>(`/documents/${id}`),
   download: (id: string) =>
     api.get(`/documents/${id}/download`, { responseType: 'blob' }),
