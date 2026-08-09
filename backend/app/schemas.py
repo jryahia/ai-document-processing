@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 from .models import DocumentStatus
@@ -66,6 +66,20 @@ class PaginatedDocuments(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class BatchUploadItem(BaseModel):
+    """Per-file outcome of a batch upload. `document_id`/`error` are mutually exclusive."""
+    filename: str
+    document_id: Optional[UUID] = None
+    status: Literal["accepted", "rejected"]
+    error: Optional[str] = None
+
+
+class BatchUploadResponse(BaseModel):
+    results: list[BatchUploadItem]
+    accepted: int
+    rejected: int
 
 
 class NotificationSettings(BaseModel):

@@ -1,6 +1,8 @@
 """File upload, document listing, detail, search, delete."""
 import os
 import uuid
+from typing import Optional
+
 import magic
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse, Response
@@ -11,7 +13,13 @@ from sqlalchemy.orm import selectinload
 from .database import get_db
 from .models import User, Document, DocumentStatus
 from .auth import get_current_user
-from .schemas import DocumentOut, DocumentListOut, PaginatedDocuments
+from .schemas import (
+    DocumentOut,
+    DocumentListOut,
+    PaginatedDocuments,
+    BatchUploadItem,
+    BatchUploadResponse,
+)
 from .tasks import process_document
 from .config import get_settings
 from .search import search_documents as search_fn
@@ -30,25 +38,22 @@ ALLOWED_MIME_TYPES = {
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
-@router.post("/upload", response_model=DocumentOut)
-async def upload_document(
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    contents = await file.read()
+def validate_file(contents: bytes) -> tuple[Optional[str], Optional[str]]:
+    """Validate raw upload bytes. Returns (ext, None) on accept, (None, error) on reject."""
     if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
+        return None, "File exceeds 20MB limit"
 
     # Detect MIME type from content
     mime_type = magic.from_buffer(contents, mime=True)
     ext = ALLOWED_MIME_TYPES.get(mime_type)
     if not ext:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {mime_type}. Allowed: PDF, PNG, JPG",
-        )
+        return None, f"Unsupported file type: {mime_type}. Allowed: PDF, PNG, JPG"
 
+    return ext, None
+
+
+def _store_file(contents: bytes, ext: str, original_name: Optional[str], user_id) -> Document:
+    """Write validated bytes to the upload dir and build the (uncommitted) Document row."""
     upload_dir = settings.upload_dir or "uploads"
     os.makedirs(upload_dir, exist_ok=True)
 
@@ -59,15 +64,29 @@ async def upload_document(
     with open(filepath, "wb") as f:
         f.write(contents)
 
-    doc = Document(
+    return Document(
         id=uuid.UUID(file_id),
-        user_id=current_user.id,
+        user_id=user_id,
         filename=filename,
-        original_name=file.filename or filename,
+        original_name=original_name or filename,
         file_size=len(contents),
         file_type=ext,
         status=DocumentStatus.uploaded,
     )
+
+
+@router.post("/upload", response_model=DocumentOut)
+async def upload_document(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contents = await file.read()
+    ext, error = validate_file(contents)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    doc = _store_file(contents, ext, file.filename, current_user.id)
     db.add(doc)
     await db.commit()
     await db.refresh(doc)
@@ -76,6 +95,48 @@ async def upload_document(
     process_document.delay(str(doc.id))
 
     return DocumentOut.model_validate(doc)
+
+
+@router.post("/upload/batch", response_model=BatchUploadResponse)
+async def upload_documents_batch(
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload several files at once. Invalid files are rejected individually;
+    valid files are still stored and queued (partial success)."""
+    results: list[BatchUploadItem] = []
+    queued: list[str] = []
+
+    for file in files:
+        name = file.filename or "unnamed"
+        contents = await file.read()
+        ext, error = validate_file(contents)
+        if error:
+            results.append(
+                BatchUploadItem(filename=name, status="rejected", error=error)
+            )
+            continue
+
+        doc = _store_file(contents, ext, file.filename, current_user.id)
+        db.add(doc)
+        queued.append(str(doc.id))
+        results.append(
+            BatchUploadItem(filename=name, document_id=doc.id, status="accepted")
+        )
+
+    if queued:
+        await db.commit()
+        # Queue only after commit so the worker can see the rows.
+        for doc_id in queued:
+            process_document.delay(doc_id)
+
+    accepted = sum(1 for r in results if r.status == "accepted")
+    return BatchUploadResponse(
+        results=results,
+        accepted=accepted,
+        rejected=len(results) - accepted,
+    )
 
 
 @router.get("", response_model=PaginatedDocuments)

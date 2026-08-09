@@ -83,11 +83,31 @@ function toListResponse(data: BackendListResponse): DocumentListResponse {
   }
 }
 
+export interface BatchUploadItem {
+  filename: string
+  document_id: string | null
+  status: 'accepted' | 'rejected'
+  error?: string | null
+}
+
+export interface BatchUploadResponse {
+  results: BatchUploadItem[]
+  accepted: number
+  rejected: number
+}
+
 export const documentsApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
     return api.post<Document>('/documents/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  uploadBatch: (files: File[]) => {
+    const form = new FormData()
+    files.forEach((file) => form.append('files', file))
+    return api.post<BatchUploadResponse>('/documents/upload/batch', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
