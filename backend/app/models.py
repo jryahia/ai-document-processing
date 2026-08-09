@@ -15,6 +15,7 @@ class DocumentStatus(str, enum.Enum):
     processing = "processing"
     completed = "completed"
     failed = "failed"
+    needs_review = "needs_review"
 
 
 class User(Base):
@@ -32,6 +33,22 @@ class User(Base):
 
 
 class Document(Base):
+    """
+    MIGRATION NOTE (no alembic in this project — main.py's lifespan calls
+    ``Base.metadata.create_all``, which only creates *missing* tables and never
+    alters existing ones). A fresh database picks up the columns below
+    automatically; an existing PostgreSQL deployment must be updated by hand
+    before deploying this version, or the worker will fail on commit:
+
+        ALTER TABLE documents ADD COLUMN confidence_score INTEGER;
+        ALTER TABLE documents ADD COLUMN needs_review BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TYPE documentstatus ADD VALUE 'needs_review';
+
+    The third statement is required as well: ``SAEnum(DocumentStatus)`` maps to a
+    native PostgreSQL enum type named ``documentstatus``, and create_all will not
+    add the new member to it.
+    """
+
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -44,6 +61,8 @@ class Document(Base):
     ocr_text = Column(Text, nullable=True)
     ai_summary = Column(Text, nullable=True)
     extracted_data = Column(JSONB, nullable=True)
+    confidence_score = Column(Integer, nullable=True)
+    needs_review = Column(Boolean, nullable=False, default=False, server_default="false")
     error_message = Column(Text, nullable=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

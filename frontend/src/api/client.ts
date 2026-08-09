@@ -36,16 +36,39 @@ export const authApi = {
 }
 
 // Documents
+export type DocumentStatus =
+  | 'uploaded'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'needs_review'
+
+/** Statuses where OCR/AI output exists and the document can be viewed or downloaded. */
+export function isProcessed(status: DocumentStatus): boolean {
+  return status === 'completed' || status === 'needs_review'
+}
+
+export const STATUS_LABELS: Record<DocumentStatus, string> = {
+  uploaded: 'Uploaded',
+  processing: 'Processing',
+  completed: 'Completed',
+  failed: 'Failed',
+  needs_review: 'Needs Review',
+}
+
 export interface Document {
   id: string
   original_name: string
   filename: string
   file_size: number
   file_type: string
-  status: 'uploaded' | 'processing' | 'completed' | 'failed'
+  status: DocumentStatus
   ocr_text: string | null
   ai_summary: string | null
   extracted_data: Record<string, unknown> | null
+  /** Heuristic extraction-completeness score, 0-100. Null until processing finishes. */
+  confidence_score: number | null
+  needs_review: boolean
   error_message: string | null
   created_at: string
   updated_at: string

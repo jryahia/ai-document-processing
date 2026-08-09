@@ -47,9 +47,18 @@ export default function Documents() {
     fetchDocuments()
   }
 
+  const needsReviewCount = documents.filter((d) => d.needs_review).length
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-100 mb-6">Documents</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-gray-100">Documents</h1>
+        {needsReviewCount > 0 && (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+            {needsReviewCount} need{needsReviewCount === 1 ? 's' : ''} review
+          </span>
+        )}
+      </div>
 
       <div className="mb-6">
         <UploadZone onUploadComplete={handleUploadComplete} />

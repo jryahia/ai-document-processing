@@ -41,6 +41,8 @@ class DocumentOut(BaseModel):
     ocr_text: Optional[str] = None
     ai_summary: Optional[str] = None
     extracted_data: Optional[dict[str, Any]] = None
+    confidence_score: Optional[int] = None
+    needs_review: bool = False
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -54,6 +56,8 @@ class DocumentListOut(BaseModel):
     file_size: int
     file_type: str
     status: DocumentStatus
+    confidence_score: Optional[int] = None
+    needs_review: bool = False
     created_at: datetime
     updated_at: datetime
 

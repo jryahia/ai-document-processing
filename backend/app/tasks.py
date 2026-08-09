@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from .config import get_settings
 from .models import Document, DocumentStatus, Notification
 from .ocr import extract_text
-from .ai_service import summarize_text, extract_structured_data
+from .ai_service import summarize_text, extract_structured_data, compute_confidence_score
 from .notifications import send_processing_complete_email
 
 settings = get_settings()
@@ -57,6 +57,7 @@ def process_document(self, document_id: str) -> dict:
         try:
             summary = summarize_text(ocr_text)
             extracted = extract_structured_data(ocr_text)
+            confidence = compute_confidence_score(extracted)
         except Exception as exc:
             doc.status = DocumentStatus.failed
             doc.error_message = f"AI processing failed: {str(exc)}"
@@ -66,7 +67,15 @@ def process_document(self, document_id: str) -> dict:
         doc.ocr_text = ocr_text
         doc.ai_summary = summary
         doc.extracted_data = extracted
-        doc.status = DocumentStatus.completed
+        doc.confidence_score = confidence
+
+        if confidence is not None and confidence < settings.confidence_threshold:
+            doc.status = DocumentStatus.needs_review
+            doc.needs_review = True
+        else:
+            doc.status = DocumentStatus.completed
+            doc.needs_review = False
+        final_status = doc.status.value
         db.commit()
 
         notif = db.query(Notification).filter(Notification.user_id == doc.user_id).first()
@@ -75,12 +84,16 @@ def process_document(self, document_id: str) -> dict:
                 send_processing_complete_email(
                     notif.email_address,
                     doc.original_name,
-                    "completed",
+                    final_status,
                 )
             except Exception:
                 pass
 
-        return {"status": "completed", "document_id": document_id}
+        return {
+            "status": final_status,
+            "document_id": document_id,
+            "confidence_score": confidence,
+        }
 
     except Exception as exc:
         db.rollback()

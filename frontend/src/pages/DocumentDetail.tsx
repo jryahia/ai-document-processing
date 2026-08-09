@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { documentsApi, type Document } from '../api/client'
+import { documentsApi, isProcessed, STATUS_LABELS, type Document } from '../api/client'
 import toast from 'react-hot-toast'
 
 type Tab = 'ocr' | 'summary' | 'data'
@@ -29,7 +29,7 @@ export default function DocumentDetail() {
   }, [id])
 
   const handleDownload = async () => {
-    if (!doc || doc.status !== 'completed') return
+    if (!doc || !isProcessed(doc.status)) return
     setDownloading(true)
     try {
       const res = await documentsApi.download(doc.id)
@@ -47,7 +47,7 @@ export default function DocumentDetail() {
   }
 
   const handleReport = async () => {
-    if (!doc || doc.status !== 'completed') return
+    if (!doc || !isProcessed(doc.status)) return
     setReportLoading(true)
     try {
       const res = await documentsApi.report(doc.id)
@@ -89,6 +89,17 @@ export default function DocumentDetail() {
     { key: 'data', label: 'Extracted Data' },
   ]
 
+  const processed = isProcessed(doc.status)
+  const score = doc.confidence_score
+  const scoreColor =
+    score === null || score === undefined
+      ? 'text-gray-500'
+      : score >= 80
+        ? 'text-green-400'
+        : score >= 60
+          ? 'text-amber-400'
+          : 'text-red-400'
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
@@ -96,11 +107,34 @@ export default function DocumentDetail() {
           ← Back
         </Link>
         <h1 className="text-2xl font-bold text-gray-100">{doc.original_name}</h1>
+        {doc.needs_review && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Needs Review
+          </span>
+        )}
       </div>
+
+      {doc.needs_review && (
+        <div className="card mb-6 border-amber-500/30 bg-amber-500/[0.04]">
+          <p className="text-amber-400 text-sm font-medium">This document needs a human review</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Only {score ?? 0}% of the expected fields were extracted, below the review
+            threshold. Check the Extracted Data tab and correct anything missing before
+            relying on this document.
+          </p>
+        </div>
+      )}
 
       {/* Meta card */}
       <div className="card mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider">Type</p>
             <p className="text-sm text-gray-200 font-medium mt-1">{doc.file_type.toUpperCase()}</p>
@@ -116,9 +150,23 @@ export default function DocumentDetail() {
             <p className={`text-sm font-medium mt-1 ${
               doc.status === 'completed' ? 'text-green-400' :
               doc.status === 'processing' ? 'text-blue-400' :
-              doc.status === 'failed' ? 'text-red-400' : 'text-yellow-400'
+              doc.status === 'failed' ? 'text-red-400' :
+              doc.status === 'needs_review' ? 'text-amber-400' : 'text-yellow-400'
             }`}>
-              {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+              {STATUS_LABELS[doc.status] ?? doc.status}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Confidence</p>
+            <p className={`text-sm font-medium mt-1 ${scoreColor}`}>
+              {score === null || score === undefined ? (
+                '—'
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-current" />
+                  {score}%
+                </span>
+              )}
             </p>
           </div>
           <div>
@@ -129,7 +177,7 @@ export default function DocumentDetail() {
           </div>
         </div>
 
-        {doc.status === 'completed' && (
+        {processed && (
           <div className="flex gap-3 mt-4 pt-4 border-t border-dark-700">
             <button
               onClick={handleDownload}
@@ -150,7 +198,7 @@ export default function DocumentDetail() {
       </div>
 
       {/* Tabs */}
-      {doc.status === 'completed' && (
+      {processed && (
         <div className="card">
           <div className="flex gap-1 border-b border-dark-700 mb-4">
             {tabs.map((tab) => (

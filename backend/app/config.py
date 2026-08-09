@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@docprocessing.app"
+    # Documents whose heuristic extraction-confidence score falls below this
+    # threshold (0-100) are flagged needs_review instead of completed.
+    confidence_threshold: int = 60
 
     _DEFAULT_SECRET_KEY = "change-me-in-production-use-long-random-string"
 
