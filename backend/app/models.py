@@ -72,12 +72,46 @@ class Document(Base):
 
 
 class Notification(Base):
+    """
+    MIGRATION NOTE (see the note on ``Document`` — this project has no alembic,
+    and ``Base.metadata.create_all`` never adds columns to an existing table).
+    ``webhook_url`` is new; an existing PostgreSQL deployment must run:
+
+        ALTER TABLE notifications ADD COLUMN webhook_url VARCHAR(512);
+
+    before deploying this version, or every notification read/write will fail
+    with ``UndefinedColumn``. The ``webhook_deliveries`` table below is a *new*
+    table and is created automatically by create_all.
+    """
+
     __tablename__ = "notifications"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     email_enabled = Column(Boolean, nullable=False, default=False)
     email_address = Column(String(255), nullable=True)
+    webhook_url = Column(String(512), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="notification")
+
+
+class WebhookDelivery(Base):
+    """One row per outbound webhook POST attempt, including retries.
+
+    Unlike the email path (which swallows failures silently), every attempt is
+    persisted here so delivery problems are visible after the fact.
+    """
+
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(String(64), nullable=True, index=True)
+    webhook_url = Column(String(512), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    payload = Column(Text, nullable=True)
+    response_text = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    attempted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    success = Column(Boolean, nullable=False, default=False, server_default="false")

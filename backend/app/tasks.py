@@ -1,5 +1,7 @@
+import logging
 import uuid
 from celery import Celery
+from celery.exceptions import Retry
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from .config import get_settings
@@ -7,6 +9,9 @@ from .models import Document, DocumentStatus, Notification
 from .ocr import extract_text
 from .ai_service import summarize_text, extract_structured_data, compute_confidence_score
 from .notifications import send_processing_complete_email
+from .webhooks import deliver_webhook
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -31,6 +36,28 @@ SyncSession = sessionmaker(bind=sync_engine)
 
 def get_sync_db() -> Session:
     return SyncSession()
+
+
+def _fire_webhook(db: Session, notif, document_id: str, status: str, filename: str, confidence) -> None:
+    """Best-effort webhook delivery. Never raises — document state wins."""
+    if not notif or not notif.webhook_url:
+        return
+    try:
+        deliver_webhook(
+            db,
+            notif,
+            document_id=document_id,
+            status=status,
+            filename=filename,
+            confidence=confidence,
+        )
+    except Exception as exc:
+        logger.error(
+            "Unexpected error delivering webhook for document %s: %s",
+            document_id,
+            exc,
+            exc_info=True,
+        )
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -89,6 +116,8 @@ def process_document(self, document_id: str) -> dict:
             except Exception:
                 pass
 
+        _fire_webhook(db, notif, document_id, final_status, doc.original_name, confidence)
+
         return {
             "status": final_status,
             "document_id": document_id,
@@ -113,6 +142,19 @@ def process_document(self, document_id: str) -> dict:
                 )
             except Exception:
                 pass
+
+        # A Retry is not a completion — Celery will run this task again, so
+        # firing the webhook here would POST once per attempt. Only the final
+        # attempt (which re-raises the original exception) notifies.
+        if not isinstance(exc, Retry):
+            _fire_webhook(
+                db,
+                notif,
+                document_id,
+                "failed",
+                doc.original_name if doc else "Unknown",
+                doc.confidence_score if doc else None,
+            )
 
         raise
     finally:

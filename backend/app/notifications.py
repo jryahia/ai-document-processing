@@ -73,10 +73,11 @@ async def get_notifications(
     )
     notif = result.scalar_one_or_none()
     if not notif:
-        return {"email_enabled": False, "email_address": ""}
+        return {"email_enabled": False, "email_address": "", "webhook_url": ""}
     return {
         "email_enabled": notif.email_enabled,
         "email_address": notif.email_address or "",
+        "webhook_url": notif.webhook_url or "",
     }
 
 
@@ -94,16 +95,31 @@ async def update_notifications(
     )
     notif = result.scalar_one_or_none()
 
+    # Absent key leaves the stored value alone; an explicit empty string clears it.
+    webhook_url = data.get("webhook_url", notif.webhook_url if notif else "")
+    webhook_url = (webhook_url or "").strip()
+    if webhook_url:
+        if len(webhook_url) > 512:
+            raise HTTPException(status_code=400, detail="webhook_url must be 512 characters or fewer")
+        if not webhook_url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="webhook_url must start with http:// or https://")
+
     if not notif:
         notif = Notification(
             user_id=current_user.id,
             email_enabled=email_enabled,
             email_address=email_address,
+            webhook_url=webhook_url or None,
         )
         db.add(notif)
     else:
         notif.email_enabled = email_enabled
         notif.email_address = email_address
+        notif.webhook_url = webhook_url or None
 
     await db.commit()
-    return {"email_enabled": email_enabled, "email_address": email_address}
+    return {
+        "email_enabled": email_enabled,
+        "email_address": email_address,
+        "webhook_url": webhook_url,
+    }

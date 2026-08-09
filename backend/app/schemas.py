@@ -89,11 +89,13 @@ class BatchUploadResponse(BaseModel):
 class NotificationSettings(BaseModel):
     email_enabled: bool
     email_address: Optional[EmailStr] = None
+    webhook_url: Optional[str] = Field(default=None, max_length=512)
 
 
 class NotificationOut(BaseModel):
     email_enabled: bool
     email_address: Optional[str] = None
+    webhook_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

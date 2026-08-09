@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 interface NotificationSettings {
   email_enabled: boolean
   email_address: string
+  webhook_url: string
 }
 
 export default function Settings() {
@@ -13,6 +14,7 @@ export default function Settings() {
   const [notif, setNotif] = useState<NotificationSettings>({
     email_enabled: false,
     email_address: '',
+    webhook_url: '',
   })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -25,6 +27,7 @@ export default function Settings() {
         setNotif({
           email_enabled: res.data.email_enabled,
           email_address: res.data.email_address || '',
+          webhook_url: res.data.webhook_url || '',
         })
       } catch {
         // default values
@@ -40,8 +43,8 @@ export default function Settings() {
     try {
       await notificationsApi.update(notif)
       toast.success('Settings saved')
-    } catch {
-      toast.error('Failed to save settings')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save settings')
     } finally {
       setSaving(false)
     }
@@ -118,6 +121,21 @@ export default function Settings() {
                   />
                 </div>
               )}
+
+              {/* Independent of the email toggle — webhooks work on their own */}
+              <div className="pt-2 border-t border-dark-700">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5 mt-4">Webhook URL</label>
+                <input
+                  type="url"
+                  value={notif.webhook_url}
+                  onChange={(e) => setNotif({ ...notif, webhook_url: e.target.value })}
+                  className="input-field"
+                  placeholder="https://example.com/hooks/docprocess"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  POSTed on every processing completion (success and failure). Leave blank to disable.
+                </p>
+              </div>
 
               <button
                 onClick={handleSave}

@@ -157,6 +157,6 @@ export const documentsApi = {
 // Notifications
 export const notificationsApi = {
   get: () => api.get('/notifications'),
-  update: (data: { email_address: string; email_enabled: boolean }) =>
+  update: (data: { email_address: string; email_enabled: boolean; webhook_url?: string }) =>
     api.put('/notifications', data),
 }
