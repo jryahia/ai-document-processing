@@ -1,77 +1,119 @@
+"""Provider-agnostic LLM calls.
+
+Uses the OpenAI SDK pointed at a configurable base_url, so it works with any
+OpenAI-compatible provider (OpenAI, DeepSeek, OpenRouter, Groq, local servers).
+The per-user provider config (provider, base_url, model, encrypted API key) is
+resolved by the caller (see tasks._get_user_llm_config) and passed in as a
+dict. When no API key is configured, calls return a clearly-labelled fallback
+instead of raising — same graceful demo behaviour as before.
+"""
 import json
-from openai import OpenAI
+
+from openai import OpenAI, OpenAIError
+
 from .config import get_settings
 
 settings = get_settings()
 
+# Fallback defaults when no per-user provider config is passed.
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_MODEL = "gpt-4o-mini"
 
-def get_client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key)
+
+def _client(api_key: str, base_url: str) -> OpenAI:
+    kwargs: dict = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
 
 
-def summarize_text(text: str) -> str:
-    if not settings.openai_api_key or not text.strip():
+def _resolve(provider: dict | None) -> tuple[str, str, str]:
+    """Return (api_key, base_url, model) from *provider* or env fallbacks."""
+    if provider:
+        return (
+            provider.get("api_key") or settings.openai_api_key,
+            provider.get("base_url") or settings.openai_base_url or DEFAULT_BASE_URL,
+            provider.get("model") or settings.openai_model or DEFAULT_MODEL,
+        )
+    return (
+        settings.openai_api_key,
+        settings.openai_base_url or DEFAULT_BASE_URL,
+        settings.openai_model or DEFAULT_MODEL,
+    )
+
+
+def summarize_text(text: str, provider: dict | None = None) -> str:
+    api_key, base_url, model = _resolve(provider)
+    if not api_key or not text.strip():
         return "No summary available (OpenAI API key not configured or no text extracted)."
 
-    client = get_client()
-    truncated = text[:12000]
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a document analyst. Summarize the provided document text "
-                    "in exactly 3 concise sentences. Focus on the key information, purpose, "
-                    "and important details."
-                ),
-            },
-            {"role": "user", "content": f"Document text:\n\n{truncated}"},
-        ],
-        max_tokens=300,
-        temperature=0.3,
-    )
-    return response.choices[0].message.content or ""
+    try:
+        client = _client(api_key, base_url)
+        truncated = text[:12000]
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a document analyst. Summarize the provided document text "
+                        "in exactly 3 concise sentences. Focus on the key information, purpose, "
+                        "and important details."
+                    ),
+                },
+                {"role": "user", "content": f"Document text:\n\n{truncated}"},
+            ],
+            max_tokens=300,
+            temperature=0.3,
+        )
+        content = response.choices[0].message.content
+        return content.strip() if content else "No summary available (empty model response)."
+    except OpenAIError as exc:
+        return f"Summary unavailable — LLM error: {type(exc).__name__}. Configure a valid API key for the selected provider."
 
 
-def extract_structured_data(text: str) -> dict:
-    if not settings.openai_api_key or not text.strip():
+def extract_structured_data(text: str, provider: dict | None = None) -> dict:
+    api_key, base_url, model = _resolve(provider)
+    if not api_key or not text.strip():
         return {}
 
-    client = get_client()
-    truncated = text[:12000]
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a data extraction specialist. Extract structured information from the document. "
-                    "Return ONLY a valid JSON object with these fields (use null if not found):\n"
-                    "{\n"
-                    '  "document_type": string,\n'
-                    '  "dates": [{"label": string, "value": string}],\n'
-                    '  "names": [{"label": string, "value": string}],\n'
-                    '  "amounts": [{"label": string, "value": string, "currency": string}],\n'
-                    '  "invoice_number": string | null,\n'
-                    '  "reference_numbers": [string],\n'
-                    '  "addresses": [{"label": string, "value": string}],\n'
-                    '  "organization": string | null,\n'
-                    '  "key_fields": {"key": "value"}\n'
-                    "}"
-                ),
-            },
-            {"role": "user", "content": f"Document text:\n\n{truncated}"},
-        ],
-        max_tokens=1000,
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    content = response.choices[0].message.content or "{}"
     try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {"raw_response": content}
+        client = _client(api_key, base_url)
+        truncated = text[:12000]
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a data extraction specialist. Extract structured information from the document. "
+                        "Return ONLY a valid JSON object with these fields (use null if not found):\n"
+                        "{\n"
+                        '  "document_type": string,\n'
+                        '  "dates": [{"label": string, "value": string}],\n'
+                        '  "names": [{"label": string, "value": string}],\n'
+                        '  "amounts": [{"label": string, "value": string, "currency": string}],\n'
+                        '  "invoice_number": string | null,\n'
+                        '  "reference_numbers": [string],\n'
+                        '  "addresses": [{"label": string, "value": string}],\n'
+                        '  "organization": string | null,\n'
+                        '  "key_fields": {"key": "value"}\n'
+                        "}"
+                    ),
+                },
+                {"role": "user", "content": f"Document text:\n\n{truncated}"},
+            ],
+            max_tokens=1000,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content or "{}"
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {"raw_response": content}
+    except OpenAIError:
+        return {}
 
 
 # Fields the extraction prompt asks for. Scalars count as filled when non-null and

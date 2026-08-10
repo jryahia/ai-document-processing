@@ -7,6 +7,7 @@ from .database import engine, Base
 from .auth import router as auth_router
 from .upload import router as upload_router
 from .notifications import router as notifications_router
+from .llm_settings import router as llm_settings_router
 from .config import get_settings
 
 settings = get_settings()
@@ -36,9 +37,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+# auth_router already declares prefix="/api/auth" — don't double it.
+app.include_router(auth_router, tags=["auth"])
 app.include_router(upload_router, prefix="/api/documents", tags=["documents"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(llm_settings_router, tags=["llm-settings"])
 
 
 @app.get("/api/health")

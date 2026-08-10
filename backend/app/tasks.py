@@ -5,7 +5,8 @@ from celery.exceptions import Retry
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from .config import get_settings
-from .models import Document, DocumentStatus, Notification
+from .models import Document, DocumentStatus, Notification, LLMSettings
+from .crypto_utils import decrypt_secret
 from .ocr import extract_text
 from .ai_service import summarize_text, extract_structured_data, compute_confidence_score
 from .notifications import send_processing_complete_email
@@ -29,6 +30,8 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
 )
+# Local/demo mode: run tasks synchronously in-process (no broker/worker).
+celery_app.conf.task_always_eager = settings.celery_task_always_eager
 
 sync_engine = create_engine(settings.sync_database_url, pool_pre_ping=True)
 SyncSession = sessionmaker(bind=sync_engine)
@@ -36,6 +39,28 @@ SyncSession = sessionmaker(bind=sync_engine)
 
 def get_sync_db() -> Session:
     return SyncSession()
+
+
+def _get_user_llm_config(user_id) -> dict | None:
+    """Resolve the user's configured LLM provider (encrypted key decrypted).
+
+    Returns a dict with keys api_key/base_url/model, or None when nothing is
+    configured (caller falls back to env settings / graceful no-key state).
+    """
+    db = get_sync_db()
+    try:
+        row = db.query(LLMSettings).filter(LLMSettings.user_id == user_id).first()
+        if row and row.api_key_encrypted:
+            api_key = decrypt_secret(row.api_key_encrypted)
+            if api_key:
+                return {
+                    "api_key": api_key,
+                    "base_url": row.base_url,
+                    "model": row.model,
+                }
+        return None
+    finally:
+        db.close()
 
 
 def _fire_webhook(db: Session, notif, document_id: str, status: str, filename: str, confidence) -> None:
@@ -82,8 +107,9 @@ def process_document(self, document_id: str) -> dict:
             raise self.retry(exc=exc)
 
         try:
-            summary = summarize_text(ocr_text)
-            extracted = extract_structured_data(ocr_text)
+            provider = _get_user_llm_config(doc.user_id)
+            summary = summarize_text(ocr_text, provider)
+            extracted = extract_structured_data(ocr_text, provider)
             confidence = compute_confidence_score(extracted)
         except Exception as exc:
             doc.status = DocumentStatus.failed

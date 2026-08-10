@@ -2,9 +2,8 @@ import enum
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Integer, BigInteger, Boolean, DateTime,
-    ForeignKey, Enum as SAEnum, Text, func
+    ForeignKey, Enum as SAEnum, Text, func, JSON, Uuid,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 import uuid
 from .database import Base
@@ -21,7 +20,7 @@ class DocumentStatus(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
@@ -30,6 +29,7 @@ class User(Base):
 
     documents = relationship("Document", back_populates="user", lazy="select")
     notification = relationship("Notification", back_populates="user", uselist=False, lazy="select")
+    llm_settings = relationship("LLMSettings", back_populates="user", uselist=False, lazy="select")
 
 
 class Document(Base):
@@ -51,8 +51,8 @@ class Document(Base):
 
     __tablename__ = "documents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     filename = Column(String(512), nullable=False)
     original_name = Column(String(512), nullable=False)
     file_size = Column(BigInteger, nullable=False)
@@ -60,7 +60,7 @@ class Document(Base):
     status = Column(SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.uploaded)
     ocr_text = Column(Text, nullable=True)
     ai_summary = Column(Text, nullable=True)
-    extracted_data = Column(JSONB, nullable=True)
+    extracted_data = Column(JSON, nullable=True)
     confidence_score = Column(Integer, nullable=True)
     needs_review = Column(Boolean, nullable=False, default=False, server_default="false")
     error_message = Column(Text, nullable=True)
@@ -86,8 +86,8 @@ class Notification(Base):
 
     __tablename__ = "notifications"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     email_enabled = Column(Boolean, nullable=False, default=False)
     email_address = Column(String(255), nullable=True)
     webhook_url = Column(String(512), nullable=True)
@@ -105,8 +105,8 @@ class WebhookDelivery(Base):
 
     __tablename__ = "webhook_deliveries"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     document_id = Column(String(64), nullable=True, index=True)
     webhook_url = Column(String(512), nullable=False)
     status_code = Column(Integer, nullable=True)
@@ -115,3 +115,25 @@ class WebhookDelivery(Base):
     error = Column(Text, nullable=True)
     attempted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     success = Column(Boolean, nullable=False, default=False, server_default="false")
+
+
+class LLMSettings(Base):
+    """Per-user LLM provider configuration (AI Provider section of Settings).
+
+    The API key is stored encrypted at rest (Fernet, key derived from
+    SECRET_KEY) — see crypto_utils.py. The API never returns the key; only
+    `has_api_key` is exposed.
+    """
+
+    __tablename__ = "llm_settings"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    provider = Column(String(32), nullable=False, default="openai")
+    base_url = Column(String(512), nullable=False, default="https://api.openai.com/v1")
+    model = Column(String(128), nullable=False, default="gpt-4o-mini")
+    api_key_encrypted = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="llm_settings")

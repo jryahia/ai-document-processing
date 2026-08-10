@@ -39,3 +39,6 @@ frontend/dist/
 
 # Uploads
 uploads/
+
+# Local databases
+*.db

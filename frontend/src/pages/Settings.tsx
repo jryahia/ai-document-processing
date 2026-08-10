@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { notificationsApi } from '../api/client'
+import {
+  notificationsApi,
+  llmSettingsApi,
+  LLM_PROVIDER_PRESETS,
+  LLM_PROVIDER_LABELS,
+  LLMProvider,
+  LLMSettings,
+} from '../api/client'
 import toast from 'react-hot-toast'
 
 interface NotificationSettings {
@@ -19,6 +26,17 @@ export default function Settings() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // AI Provider
+  const [llm, setLlm] = useState<LLMSettings>({
+    provider: 'openai',
+    base_url: LLM_PROVIDER_PRESETS.openai.base_url,
+    model: LLM_PROVIDER_PRESETS.openai.model,
+    has_api_key: false,
+  })
+  const [apiKey, setApiKey] = useState('')
+  const [llmLoading, setLlmLoading] = useState(false)
+  const [llmSaving, setLlmSaving] = useState(false)
+
   useEffect(() => {
     const fetchSettings = async () => {
       setLoading(true)
@@ -35,7 +53,19 @@ export default function Settings() {
         setLoading(false)
       }
     }
+    const fetchLlm = async () => {
+      setLlmLoading(true)
+      try {
+        const res = await llmSettingsApi.get()
+        setLlm(res.data)
+      } catch {
+        // defaults
+      } finally {
+        setLlmLoading(false)
+      }
+    }
     fetchSettings()
+    fetchLlm()
   }, [])
 
   const handleSave = async () => {
@@ -47,6 +77,44 @@ export default function Settings() {
       toast.error(err?.response?.data?.detail || 'Failed to save settings')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleProviderChange = (provider: LLMProvider) => {
+    const preset = LLM_PROVIDER_PRESETS[provider]
+    setLlm((prev) => ({
+      ...prev,
+      provider,
+      base_url: preset.base_url,
+      model: preset.model,
+    }))
+  }
+
+  const handleLlmSave = async () => {
+    setLlmSaving(true)
+    try {
+      const payload: {
+        provider: LLMProvider
+        base_url: string
+        model: string
+        api_key?: string
+      } = {
+        provider: llm.provider,
+        base_url: llm.base_url,
+        model: llm.model,
+      }
+      // Only send the key when the user typed a new one — an absent key keeps the stored one.
+      if (apiKey.trim()) {
+        payload.api_key = apiKey.trim()
+      }
+      const res = await llmSettingsApi.update(payload)
+      setLlm(res.data)
+      setApiKey('')
+      toast.success('AI provider settings saved')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save AI provider settings')
+    } finally {
+      setLlmSaving(false)
     }
   }
 
@@ -81,6 +149,91 @@ export default function Settings() {
               Profile editing coming soon
             </p>
           </div>
+        </div>
+
+        {/* AI Provider */}
+        <div className="card">
+          <h2 className="text-lg font-semibold text-gray-200 mb-4">AI Provider</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Which LLM processes your documents. OpenAI-compatible endpoints work with OpenAI,
+            DeepSeek, OpenRouter, Groq and more. The API key is encrypted before storage and
+            never shown again.
+          </p>
+          {llmLoading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="h-10 bg-dark-700 rounded" />
+              <div className="h-10 bg-dark-700 rounded" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">Provider</label>
+                <select
+                  value={llm.provider}
+                  onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
+                  className="input-field"
+                >
+                  {(Object.keys(LLM_PROVIDER_LABELS) as LLMProvider[]).map((p) => (
+                    <option key={p} value={p} className="bg-dark-800">
+                      {LLM_PROVIDER_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="input-field"
+                  placeholder={llm.has_api_key ? '•••••••• (saved — leave blank to keep)' : 'sk-...'}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  {llm.has_api_key
+                    ? 'A key is saved for this provider. Type a new one to replace it.'
+                    : 'No key configured yet — documents will show a placeholder summary until one is added.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">Base URL</label>
+                <input
+                  type="text"
+                  value={llm.base_url}
+                  onChange={(e) => setLlm({ ...llm, base_url: e.target.value })}
+                  className="input-field"
+                  placeholder="https://api.openai.com/v1"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  {llm.provider === 'custom'
+                    ? 'Required for custom endpoints (e.g. http://localhost:11434/v1 for Ollama).'
+                    : 'Pre-filled with the default for this provider — editable if needed.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">Model</label>
+                <input
+                  type="text"
+                  value={llm.model}
+                  onChange={(e) => setLlm({ ...llm, model: e.target.value })}
+                  className="input-field"
+                  placeholder="gpt-4o-mini"
+                />
+              </div>
+
+              <button
+                onClick={handleLlmSave}
+                disabled={llmSaving}
+                className="btn-primary"
+              >
+                {llmSaving ? 'Saving...' : 'Save AI Provider'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Notifications */}

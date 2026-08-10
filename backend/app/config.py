@@ -12,10 +12,15 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     openai_api_key: str = ""
+    openai_base_url: str = ""
+    openai_model: str = "gpt-4o-mini"
     upload_dir: str = "/app/uploads"
     max_file_size_mb: int = 20
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/0"
+    # When true (local/demo mode), Celery tasks run eagerly in-process instead
+    # of being queued to a broker — no Redis/worker needed.
+    celery_task_always_eager: bool = False
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""

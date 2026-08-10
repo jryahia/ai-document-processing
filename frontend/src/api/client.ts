@@ -160,3 +160,35 @@ export const notificationsApi = {
   update: (data: { email_address: string; email_enabled: boolean; webhook_url?: string }) =>
     api.put('/notifications', data),
 }
+
+// LLM provider settings (AI Provider section)
+export type LLMProvider = 'openai' | 'deepseek' | 'openrouter' | 'groq' | 'custom'
+
+export const LLM_PROVIDER_PRESETS: Record<LLMProvider, { base_url: string; model: string }> = {
+  openai: { base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  deepseek: { base_url: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  openrouter: { base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini' },
+  groq: { base_url: 'https://api.groq.com/openai/v1', model: 'llama-3.1-8b-instant' },
+  custom: { base_url: '', model: '' },
+}
+
+export const LLM_PROVIDER_LABELS: Record<LLMProvider, string> = {
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
+  groq: 'Groq',
+  custom: 'Custom / Other',
+}
+
+export interface LLMSettings {
+  provider: LLMProvider
+  base_url: string
+  model: string
+  has_api_key: boolean
+}
+
+export const llmSettingsApi = {
+  get: () => api.get<LLMSettings>('/llm-settings'),
+  update: (data: { provider: LLMProvider; base_url: string; model: string; api_key?: string }) =>
+    api.put<LLMSettings>('/llm-settings', data),
+}
