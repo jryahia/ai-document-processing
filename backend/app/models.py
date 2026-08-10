@@ -133,6 +133,10 @@ class LLMSettings(Base):
     base_url = Column(String(512), nullable=False, default="https://api.openai.com/v1")
     model = Column(String(128), nullable=False, default="gpt-4o-mini")
     api_key_encrypted = Column(Text, nullable=True)
+    # Last "Test Connection" result (null = never tested).
+    last_test_status = Column(String(16), nullable=True)  # null | "ok" | "failed"
+    last_test_message = Column(Text, nullable=True)
+    last_test_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

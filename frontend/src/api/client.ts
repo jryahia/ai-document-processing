@@ -185,10 +185,23 @@ export interface LLMSettings {
   base_url: string
   model: string
   has_api_key: boolean
+  last_test_status: 'ok' | 'failed' | null
+  last_test_message: string | null
+  last_test_at: string | null
+}
+
+export interface LLMTestResult {
+  success: boolean
+  provider: string
+  model: string
+  message: string
+  tested_at: string
 }
 
 export const llmSettingsApi = {
   get: () => api.get<LLMSettings>('/llm-settings'),
   update: (data: { provider: LLMProvider; base_url: string; model: string; api_key?: string }) =>
     api.put<LLMSettings>('/llm-settings', data),
+  test: (data: { provider: LLMProvider; base_url: string; model: string; api_key?: string }) =>
+    api.post<LLMTestResult>('/llm-settings/test', data),
 }

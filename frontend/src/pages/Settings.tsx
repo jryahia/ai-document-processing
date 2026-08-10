@@ -36,6 +36,8 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState('')
   const [llmLoading, setLlmLoading] = useState(false)
   const [llmSaving, setLlmSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -110,11 +112,48 @@ export default function Settings() {
       const res = await llmSettingsApi.update(payload)
       setLlm(res.data)
       setApiKey('')
+      setTestResult(null)
       toast.success('AI provider settings saved')
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to save AI provider settings')
     } finally {
       setLlmSaving(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const payload: {
+        provider: LLMProvider
+        base_url: string
+        model: string
+        api_key?: string
+      } = {
+        provider: llm.provider,
+        base_url: llm.base_url,
+        model: llm.model,
+      }
+      if (apiKey.trim()) {
+        payload.api_key = apiKey.trim()
+      }
+      const res = await llmSettingsApi.test(payload)
+      setTestResult({ success: res.data.success, message: res.data.message })
+      // Sync the persisted indicator state from the backend.
+      setLlm((prev) => ({
+        ...prev,
+        last_test_status: res.data.success ? 'ok' : 'failed',
+        last_test_message: res.data.message,
+        last_test_at: res.data.tested_at,
+      }))
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: err?.response?.data?.detail || 'Test request failed — is the backend running?',
+      })
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -154,6 +193,27 @@ export default function Settings() {
         {/* AI Provider */}
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-200 mb-4">AI Provider</h2>
+
+          {/* Status indicator — last known test result, shown on page load */}
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            {llm.last_test_status === 'ok' ? (
+              <span className="inline-flex items-center gap-1.5 text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                Active — {LLM_PROVIDER_LABELS[llm.provider]} · {llm.model}
+              </span>
+            ) : llm.last_test_status === 'failed' ? (
+              <span className="inline-flex items-center gap-1.5 text-red-400">
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                {llm.last_test_message}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-gray-500">
+                <span className="w-2 h-2 rounded-full bg-gray-500" />
+                Not tested yet — {LLM_PROVIDER_LABELS[llm.provider]} · {llm.model}
+              </span>
+            )}
+          </div>
+
           <p className="text-xs text-gray-500 mb-4">
             Which LLM processes your documents. OpenAI-compatible endpoints work with OpenAI,
             DeepSeek, OpenRouter, Groq and more. The API key is encrypted before storage and
@@ -225,13 +285,35 @@ export default function Settings() {
                 />
               </div>
 
-              <button
-                onClick={handleLlmSave}
-                disabled={llmSaving}
-                className="btn-primary"
-              >
-                {llmSaving ? 'Saving...' : 'Save AI Provider'}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testing || llmSaving}
+                  className="btn-primary !bg-dark-700 !border-dark-600 hover:!bg-dark-600 disabled:opacity-50"
+                >
+                  {testing ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button
+                  onClick={handleLlmSave}
+                  disabled={llmSaving || testing}
+                  className="btn-primary"
+                >
+                  {llmSaving ? 'Saving...' : 'Save AI Provider'}
+                </button>
+              </div>
+
+              {/* Transient test result */}
+              {testResult && (
+                <div
+                  className={`mt-3 text-sm rounded-lg px-3 py-2 border ${
+                    testResult.success
+                      ? 'text-emerald-300 border-emerald-800 bg-emerald-900/30'
+                      : 'text-red-300 border-red-800 bg-red-900/30'
+                  }`}
+                >
+                  {testResult.success ? '✓' : '✗'} {testResult.message}
+                </div>
+              )}
             </div>
           )}
         </div>
