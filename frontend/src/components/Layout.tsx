@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { BarChart3, FileText, Settings } from 'lucide-react'
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: '📊' },
-  { path: '/documents', label: 'Documents', icon: '📄' },
-  { path: '/settings', label: 'Settings', icon: '⚙️' },
+  { path: '/', label: 'Dashboard', icon: BarChart3 },
+  { path: '/documents', label: 'Documents', icon: FileText },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export default function Layout() {
@@ -56,7 +57,7 @@ export default function Layout() {
                 }`
               }
             >
-              <span>{item.icon}</span>
+              <span>{item.icon ? <item.icon className="w-4 h-4" /> : null}</span>
               {item.label}
             </NavLink>
           ))}

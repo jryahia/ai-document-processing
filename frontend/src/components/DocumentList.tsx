@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { FileText } from 'lucide-react'
 import {
   documentsApi,
   isProcessed,
@@ -132,7 +133,7 @@ export default function DocumentList({ documents, pagination, onPageChange, onDe
   if (documents.length === 0) {
     return (
       <div className="text-center py-16">
-        <div className="text-gray-600 text-5xl mb-4">📄</div>
+        <div className="text-gray-600 text-5xl mb-4"><FileText className="w-16 h-16 mx-auto" /></div>
         <p className="text-gray-500 text-lg">No documents yet</p>
         <p className="text-gray-600 text-sm mt-1">Upload a PDF or image to get started</p>
       </div>

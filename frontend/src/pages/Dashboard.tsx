@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { FileText, Image } from 'lucide-react'
 import { documentsApi, type Document } from '../api/client'
 
 interface Stats {
@@ -84,7 +85,7 @@ export default function Dashboard() {
               >
                 <div className="flex items-center gap-3">
                   <span className="text-lg">
-                    {doc.file_type === 'pdf' ? '📕' : doc.file_type === 'png' ? '🖼️' : '🖼️'}
+                    {doc.file_type === 'pdf' ? <FileText className="w-5 h-5 inline-block" /> : <Image className="w-5 h-5 inline-block" />}
                   </span>
                   <div>
                     <p className="text-sm font-medium text-gray-200">{doc.original_name}</p>
