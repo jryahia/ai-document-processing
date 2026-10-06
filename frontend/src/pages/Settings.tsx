@@ -9,6 +9,7 @@ import {
   LLMSettings,
 } from '../api/client'
 import toast from 'react-hot-toast'
+import { CheckCircle2, XCircle } from 'lucide-react'
 
 interface NotificationSettings {
   email_enabled: boolean
@@ -308,13 +309,18 @@ export default function Settings() {
               {/* Transient test result */}
               {testResult && (
                 <div
-                  className={`mt-3 text-sm rounded-lg px-3 py-2 border ${
+                  className={`mt-3 text-sm rounded-lg px-3 py-2 border flex items-center gap-2 ${
                     testResult.success
                       ? 'text-emerald-300 border-emerald-800 bg-emerald-900/30'
                       : 'text-red-300 border-red-800 bg-red-900/30'
                   }`}
                 >
-                  {testResult.success ? '✓' : '✗'} {testResult.message}
+                  {testResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 shrink-0" />
+                  )}
+                  <span>{testResult.message}</span>
                 </div>
               )}
             </div>
