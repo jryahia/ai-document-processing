@@ -32,6 +32,9 @@ export default function Settings() {
     base_url: LLM_PROVIDER_PRESETS.openai.base_url,
     model: LLM_PROVIDER_PRESETS.openai.model,
     has_api_key: false,
+    last_test_status: null,
+    last_test_message: null,
+    last_test_at: null,
   })
   const [apiKey, setApiKey] = useState('')
   const [llmLoading, setLlmLoading] = useState(false)
